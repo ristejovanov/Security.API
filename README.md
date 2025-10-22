@@ -59,7 +59,7 @@ Security.API\bin\Debug\net9.0
 and run:
 
 ```
-Security.API.exe
+Security.API.exe "http://localhost:5200"
 ```
 
 By default, the API listens on [http://localhost:5200](http://localhost:5200).
