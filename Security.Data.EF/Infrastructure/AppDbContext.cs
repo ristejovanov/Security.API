@@ -17,7 +17,7 @@ namespace Security.Data.EF.Infrastructure
             if (!optionsBuilder.IsConfigured)
             {
                 optionsBuilder.UseSqlServer(
-                    "server=ATSMKNB067;database=ATS.Testing123;user id=testuser;password=testuser;TrustServerCertificate=True;");
+                    "server=*;database=*;user id=*;password=*;TrustServerCertificate=True;");
             }
         }
 
