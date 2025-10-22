@@ -7,229 +7,219 @@ using Security.Data.EF.Infrastructure;
 
 namespace Security.DbMigrator
 {
-    class Program
+    internal class Program
     {
         static async Task Main(string[] args)
         {
             try
             {
-                string connectionString = String.Empty;
+                string connectionString = string.Empty;
                 string userName = string.Empty;
-                string password = "";
+                string password = string.Empty;
                 string dataSource = string.Empty;
                 string catalog = string.Empty;
                 string datasourceDbConnectionString = string.Empty;
-                bool hasArgs = true;
-                var hidePassword = "";
 
-                var rootCommand = new RootCommand();
-                rootCommand.Name = "DatasourceDbMigrator";
-                rootCommand.Description = "Datasource Db Migrator";
-
-                var userOption = new Option<string>(new[] { "-u", "--user" }, "Enter User Name.")
-                    { ArgumentHelpName = "User Name" };
-                var passwordOption = new Option<string>(new[] { "-p", "--password" }, "Enter Password.")
-                    { ArgumentHelpName = "Password" };
-                var dataSourceOption = new Option<string>(new[] { "-ds", "--datasource" }, "Enter Datasource.")
-                    { ArgumentHelpName = "Server Name" };
-                var catalogOption = new Option<string>(new[] { "-c", "--catalog" }, "Enter Catalog.")
-                    { ArgumentHelpName = "Database Name" };
-                var connStringOption =
-                    new Option<string>(new[] { "-cs", "--connstring" },
-                            "Enter Connection string in format: Server=ServerName;Database=DatabaseName;user id=UserName;Password=pass;")
-                        { ArgumentHelpName = "Connection String" };
-
-                rootCommand.Add(userOption);
-                rootCommand.Add(passwordOption);
-                rootCommand.Add(dataSourceOption);
-                rootCommand.Add(catalogOption);
-                rootCommand.Add(connStringOption);
-
+                var rootCommand = new RootCommand("Security Database Migrator");
+                rootCommand.AddOption(new Option<string>(new[] { "-u", "--user" }, "Database username"));
+                rootCommand.AddOption(new Option<string>(new[] { "-p", "--password" }, "Database password"));
+                rootCommand.AddOption(new Option<string>(new[] { "-ds", "--datasource" }, "SQL Server name or address"));
+                rootCommand.AddOption(new Option<string>(new[] { "-c", "--catalog" }, "Database name"));
+                rootCommand.AddOption(new Option<string>(new[] { "-cs", "--connstring" }, "Full connection string"));
                 await rootCommand.InvokeAsync(args);
 
+                // Load configuration
+                IConfiguration configuration = new ConfigurationBuilder()
+                    .AddJsonFile("appsettings.json", optional: true)
+                    .AddEnvironmentVariables()
+                    .Build();
+
+                // ✅ 1️⃣ If arguments are provided, parse and build connection
                 if (args.Length > 0)
                 {
                     foreach (var arg in args)
                     {
-                        var argKeyValuePair = arg.Split(':');
-                        switch (argKeyValuePair[0].ToLower())
+                        var argPair = arg.Split(':', 2);
+                        if (argPair.Length < 2) continue;
+                        var key = argPair[0].ToLower();
+                        var value = argPair[1];
+
+                        switch (key)
                         {
                             case "--connstring":
                             case "-cs":
-                                connectionString = argKeyValuePair[1];
+                                connectionString = value;
                                 break;
                             case "--user":
                             case "-u":
-                                userName = argKeyValuePair[1];
+                                userName = value;
                                 break;
                             case "--password":
                             case "-p":
-                                password = argKeyValuePair[1];
-                                hidePassword = password;
-                                hidePassword = hidePassword.Replace(hidePassword, "*****");
+                                password = value;
                                 break;
                             case "--datasource":
                             case "-ds":
-                                dataSource = argKeyValuePair[1];
+                                dataSource = value;
                                 break;
                             case "--catalog":
                             case "-c":
-                                catalog = argKeyValuePair[1];
-                                break;
-                            default:
-                                hasArgs = false;
+                                catalog = value;
                                 break;
                         }
                     }
-                }
 
-                IConfiguration configuration = new ConfigurationBuilder()
-                    .AddJsonFile("appsettings.json")
-                    .AddEnvironmentVariables()
-                    .Build();
-
-
-                var connStringArg = "Data Source=" + dataSource + ";Initial Catalog =" + catalog + ";User ID =" +
-                                    userName +
-                                    ";Password=" + hidePassword +
-                                    ";Multiple Active Result Sets = True;TrustServerCertificate=True;";
-                if (!string.IsNullOrEmpty(connectionString))
-                {
-                    datasourceDbConnectionString = connectionString + "TrustServerCertificate=True;";
-                    Console.WriteLine(
-                        $"Your connection string is: '{Regex.Replace(datasourceDbConnectionString, @"(?<=Password=)(.*)(?=\;)", "*****")}'");
-                }
-                else if (dataSource != null && catalog != null)
-                {
-                    var connStringBuilder = new SqlConnectionStringBuilder
+                    if (!string.IsNullOrWhiteSpace(connectionString))
                     {
-                        DataSource = dataSource,
-                        InitialCatalog = catalog,
-                        MultipleActiveResultSets = true
-                    };
-
-                    if (userName == null)
-                    {
-                        connStringBuilder.IntegratedSecurity = true;
-                        connStringBuilder.Encrypt = false;
+                        datasourceDbConnectionString = connectionString + ";TrustServerCertificate=True;";
+                        Console.WriteLine($"Using provided connection string: '{MaskPassword(datasourceDbConnectionString)}'");
                     }
-                    else
+                    else if (!string.IsNullOrWhiteSpace(dataSource) && !string.IsNullOrWhiteSpace(catalog))
                     {
-                        connStringBuilder.UserID = userName;
-                        connStringBuilder.Password = password;
-                        connStringBuilder.TrustServerCertificate = true;
-                    }
+                        var builder = new SqlConnectionStringBuilder
+                        {
+                            DataSource = dataSource,
+                            InitialCatalog = catalog,
+                            MultipleActiveResultSets = true,
+                            TrustServerCertificate = true
+                        };
 
-                    datasourceDbConnectionString = connStringBuilder.ConnectionString;
-                    Console.WriteLine(
-                        $"Your connection string is: '{Regex.Replace(datasourceDbConnectionString, @"(?<=Password=)(.*)(?=\;)", "*****")}'");
+                        if (string.IsNullOrWhiteSpace(userName))
+                        {
+                            builder.IntegratedSecurity = true;
+                            builder.Encrypt = false;
+                        }
+                        else
+                        {
+                            builder.UserID = userName;
+                            builder.Password = password;
+                        }
+
+                        datasourceDbConnectionString = builder.ConnectionString;
+                        Console.WriteLine($"Using connection built from arguments: '{MaskPassword(datasourceDbConnectionString)}'");
+                    }
                 }
-                else if (!string.IsNullOrEmpty(configuration.GetConnectionString("DefaultConnection")))
+                // ✅ 2️⃣ If no args, try appsettings.json
+                else if (!string.IsNullOrWhiteSpace(configuration.GetConnectionString("DefaultConnection")))
                 {
                     datasourceDbConnectionString = configuration.GetConnectionString("DefaultConnection");
+                    Console.WriteLine("Using connection from appsettings.json:");
+                    Console.WriteLine($"'{MaskPassword(datasourceDbConnectionString)}'");
                 }
-                else if (hasArgs == false)
-                    return;
-                else if (hasArgs && args.Length > 1)
-                    Console.WriteLine($"Your connection string is: {connStringArg}");
+                // ✅ 3️⃣ Fallback to interactive mode
                 else
                 {
-                    Console.WriteLine("Enter the connection string for the database that you want to update.");
-                    Console.Write("Server name = ");
-                    var serverName = Console.ReadLine();
+                    Console.WriteLine("No parameters or default connection found. Enter database details manually.\n");
 
-                    Console.Write("DatabaseName = ");
-                    var database = Console.ReadLine();
+                    Console.Write("Server name: ");
+                    var serverName = Console.ReadLine()?.Trim();
 
-                    Console.WriteLine("Windows authentication [y/n]");
+                    Console.Write("Database name: ");
+                    var database = Console.ReadLine()?.Trim();
+
+                    Console.Write("Windows authentication [y/n]: ");
                     var winAuth = Console.ReadKey();
                     Console.WriteLine();
 
-                    if (char.ToUpper(winAuth.KeyChar) == 'N')
+                    if (char.ToUpper(winAuth.KeyChar) == 'Y')
                     {
-                        Console.Write("UserName = ");
-                        var user = Console.ReadLine();
-                        Console.Write("Password = ");
-                        var pass = string.Empty;
-                        ConsoleKey key1;
-                        do
-                        {
-                            var keyInfo = Console.ReadKey(intercept: true);
-                            key1 = keyInfo.Key;
-                            if (key1 == ConsoleKey.Backspace && pass.Length > 0)
-                            {
-                                Console.Write("\b \b");
-                                pass = pass[0..^1];
-                            }
-                            else if (!char.IsControl(keyInfo.KeyChar))
-                            {
-                                Console.Write("*");
-                                pass += keyInfo.KeyChar;
-                            }
-                        } while (key1 != ConsoleKey.Enter);
-
-                        Console.WriteLine();
-
                         datasourceDbConnectionString =
-                            "Server=" + serverName + ";Database=" + database + ";user id=" + user +
-                            ";Password=" + pass + ";TrustServerCertificate=True;";
-                    }
-                    else if (char.ToUpper(winAuth.KeyChar) == 'Y')
-                    {
-                        datasourceDbConnectionString = "Server=" + serverName + ";Database=" + database +
-                                                       ";Integrated Security=True;Encrypt=False";
+                            $"Server={serverName};Database={database};Integrated Security=True;Encrypt=False;TrustServerCertificate=True;";
                     }
                     else
-                        return;
+                    {
+                        Console.Write("User name: ");
+                        var user = Console.ReadLine();
+
+                        Console.Write("Password: ");
+                        var pass = ReadHiddenPassword();
+
+                        datasourceDbConnectionString =
+                            $"Server={serverName};Database={database};User Id={user};Password={pass};TrustServerCertificate=True;";
+                    }
+
+                    Console.WriteLine($"Using connection: '{MaskPassword(datasourceDbConnectionString)}'");
                 }
 
-
+                // ✅ 4️⃣ Run migrations
+                Console.WriteLine("\nChecking database migrations...");
                 var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
                 optionsBuilder.UseSqlServer(datasourceDbConnectionString,
                     options => options.CommandTimeout(int.MaxValue));
-                var dbContext = new AppDbContext(optionsBuilder.Options);
 
-                var appliedMigrations = dbContext.Database.GetAppliedMigrations();
-                Console.WriteLine("Existing database schemas:");
-                if (!appliedMigrations.Any())
-                    Console.WriteLine("None");
-                foreach (var migration in appliedMigrations)
-                {
-                    Console.WriteLine(migration);
-                }
+                using var dbContext = new AppDbContext(optionsBuilder.Options);
 
-                var pendingMigrations = dbContext.Database.GetPendingMigrations();
+                var appliedMigrations = dbContext.Database.GetAppliedMigrations().ToList();
+                var pendingMigrations = dbContext.Database.GetPendingMigrations().ToList();
 
-                Console.WriteLine("Pending database schemas:");
-                if (!pendingMigrations.Any())
-                    Console.WriteLine("None");
-                foreach (var migration in pendingMigrations)
-                {
-                    Console.WriteLine(migration);
-                }
-
-                Console.WriteLine("Press 'Y' to continue update or any key to exit.");
-                var key = Console.ReadKey();
-                Console.WriteLine();
-                if (char.ToUpper(key.KeyChar) != 'Y')
-                    return;
-
-                if (!appliedMigrations.Any())
-                    Console.WriteLine("\nCreating database...");
+                Console.WriteLine("\nApplied migrations:");
+                if (appliedMigrations.Any())
+                    appliedMigrations.ForEach(m => Console.WriteLine($"  ✔ {m}"));
                 else
-                    Console.WriteLine("\nUpdating database...");
+                    Console.WriteLine("  None");
 
+                Console.WriteLine("\nPending migrations:");
+                if (pendingMigrations.Any())
+                    pendingMigrations.ForEach(m => Console.WriteLine($"  ➜ {m}"));
+                else
+                    Console.WriteLine("  None");
+
+                if (!pendingMigrations.Any())
+                {
+                    Console.WriteLine("\n✅ Database is already up to date.");
+                    return;
+                }
+
+                Console.WriteLine("\nPress 'Y' to apply pending migrations, or any other key to cancel.");
+                var instruction = Console.ReadKey();
+                Console.WriteLine();
+
+                if (char.ToUpper(instruction.KeyChar) != 'Y')
+                {
+                    Console.WriteLine("Operation canceled by user.");
+                    return;
+                }
+
+                Console.WriteLine("\nApplying migrations...");
                 dbContext.Database.Migrate();
-
+                Console.WriteLine("\n✅ Migration completed successfully!");
             }
             catch (SqlException ex)
             {
-                Console.WriteLine("Failed to connect to database. \n" + ex.Message);
+                Console.WriteLine($"\n❌ Database connection failed:\n{ex.Message}");
             }
             catch (Exception ex)
             {
-                Console.WriteLine("Application failed. \n" + ex.Message);
+                Console.WriteLine($"\n❌ Unexpected error:\n{ex.Message}");
             }
+        }
+
+        private static string MaskPassword(string conn)
+        {
+            return Regex.Replace(conn, @"(?<=Password=)(.*?)(?=;)", "*****", RegexOptions.IgnoreCase);
+        }
+
+        private static string ReadHiddenPassword()
+        {
+            var pass = string.Empty;
+            ConsoleKey key;
+            do
+            {
+                var keyInfo = Console.ReadKey(intercept: true);
+                key = keyInfo.Key;
+                if (key == ConsoleKey.Backspace && pass.Length > 0)
+                {
+                    Console.Write("\b \b");
+                    pass = pass[0..^1];
+                }
+                else if (!char.IsControl(keyInfo.KeyChar))
+                {
+                    Console.Write("*");
+                    pass += keyInfo.KeyChar;
+                }
+            } while (key != ConsoleKey.Enter);
+            Console.WriteLine();
+            return pass;
         }
     }
 }
