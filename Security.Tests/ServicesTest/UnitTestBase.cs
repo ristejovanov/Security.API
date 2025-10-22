@@ -6,7 +6,7 @@ namespace Security.Tests.ServicesTest
 {
     public class UnitTestBase
     {
-        protected IServiceProvider ServiceProvider;
+        protected IServiceProvider ServiceProvider = null!;
 
         /// <summary>
         /// Initializes the test by setting up the dependency injection service provider.

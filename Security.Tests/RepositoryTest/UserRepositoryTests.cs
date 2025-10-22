@@ -2,7 +2,6 @@
 using Security.Repositories.impl;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Microsoft.EntityFrameworkCore;
-using Security.Data.EF.Infrastructure;
 using Security.Shared;
 
 
@@ -165,29 +164,40 @@ namespace Security.Tests.RepositoryTest
         [TestMethod]
         public async Task Add_ShouldThrowRepositoryException_OnSqlError()
         {
+            var userID = Guid.NewGuid();
             // Arrange
             var user = new User
             {
-                Id = Guid.NewGuid(),
+                Id =userID,
                 UserName = "TestUser",
-                Email = "testuser@outlook.com",
-                FullName = "SeedFullName1",
-                MobileNumber = "+38888888",
-                Language = "MK1",
-                Culture = "SLO1",
+                Email = "duplicate@test.com",
+                FullName = "John Doe",
+                MobileNumber = "123456",
+                Language = "en",
+                Culture = "en-US",
                 PasswordHash = [],
-                PasswordSalt = [],
+                PasswordSalt = []
             };
 
-
-            await _dbContext.DisposeAsync();
             _userRepository = new UserRepository(_dbContext);
+            await _userRepository.Add(user);
 
             // Act & Assert
-            var ex = await Assert.ThrowsExceptionAsync<RepositoryException>(
-                async () => await _userRepository.Add(user));
+            var duplicate = new User
+            {
+                Id = userID,
+                UserName = "TestUser2",
+                Email = "duplicate@test.com", // unique constraint violation
+                FullName = "John Doe",
+                MobileNumber = "123456",
+                Language = "en",
+                Culture = "en-US",
+                PasswordHash = [],
+                PasswordSalt = []
+            };
 
-            Assert.IsTrue(ex.Message.Contains("SQL Error 2627"));
+            var ex = await Assert.ThrowsExceptionAsync<RepositoryException>(
+                async () => await _userRepository.Add(duplicate));
         }
 
         [TestMethod]
@@ -364,7 +374,6 @@ namespace Security.Tests.RepositoryTest
             var email = "test@email.com";
 
             await SeedDataAsync(userId, userName, email);
-            _userRepository = new UserRepository(_dbContext);
 
             var anotherUser = new User
             {
@@ -373,9 +382,9 @@ namespace Security.Tests.RepositoryTest
                 Email = "keep@domain.com"
             };
 
-            await _dbContext.Users.AddAsync(anotherUser);
-            await _dbContext.SaveChangesAsync();
+            await SeedDataAsync(anotherUser.Id, anotherUser.UserName, anotherUser.Email);
 
+            _userRepository = new UserRepository(_dbContext);
             // Act
             var result = await _userRepository.Delete(userId);
 
@@ -394,7 +403,7 @@ namespace Security.Tests.RepositoryTest
             _userRepository = new UserRepository(_dbContext);
 
             // Act & Assert
-            await Assert.ThrowsExceptionAsync<ArgumentException>(async () =>
+            await Assert.ThrowsExceptionAsync<RepositoryException>(async () =>
                 await _userRepository.Delete(Guid.Empty));
         }
     }

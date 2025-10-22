@@ -18,8 +18,6 @@ namespace Security.Tests.ServicesTest
     [TestClass]
     public class UserServiceTests : UnitTestBase
     {
-        private Mock<IUserRepository> _repoMock;
-        private Mock<IHelper> _helperMock;
 
         protected override void AddDependencies(ServiceCollection serviceCollection)
         {
@@ -243,9 +241,7 @@ namespace Security.Tests.ServicesTest
             // Assert
             Assert.IsTrue(result);
 
-            //serviceMock.Mock.Verify(mock => mock.GetDatabaseInfo(It.IsAny<ConnectionInfoDto>()), Times.Once);
-
-            _repoMock.Verify(r => r.Update(It.Is<User>(u => u.Email == req.Email)), Times.Once);
+            userRepositoryMock.Mock.Verify(mock => mock.Update(It.Is<User>(u => u.Email == req.Email)), Times.Once);
         }
 
 

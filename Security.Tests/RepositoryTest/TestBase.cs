@@ -13,8 +13,10 @@ namespace Security.Tests.RepositoryTest
     /// </summary>
     public abstract class RepositoryIntegrationTestBase
     {
-        protected ServiceProvider _serviceProvider;
-        protected AppDbContext _dbContext;
+        // ReSharper disable once InconsistentNaming
+        protected ServiceProvider _serviceProvider = null!;
+        // ReSharper disable once InconsistentNaming
+        protected AppDbContext _dbContext = null!;
 
         [TestInitialize]
         public async Task TestInitialize()
@@ -36,9 +38,7 @@ namespace Security.Tests.RepositoryTest
         public async Task TestCleanup()
         {
             if (_dbContext != null)
-            {
                 await _dbContext.DisposeAsync();
-            }
 
             if (_serviceProvider != null)
                 await _serviceProvider.DisposeAsync();
